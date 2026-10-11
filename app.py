@@ -186,7 +186,7 @@ if role == "Admin (प्रशासक)":
             st.info("कोणतीही बोली नोंदवलेली नाही.")
 
 # ==========================================
-# 2. USER PANEL (Always Visible & 100% Reliable)
+# 2. USER PANEL (Always Visible)
 # ==========================================
 else:
     st.title("🚩 नवरात्र उत्सव - देवीची पूजा व प्रार्थना बोली")
@@ -203,11 +203,31 @@ else:
 
         with col_left:
             st.subheader("📝 भाविकाची माहिती व गुप्त पिन")
-            u_mobile = st.text_input("१० अंकी मोबाईल क्रमांक:", max_chars=10, key="user_mob_input", placeholder="उदा. 9876543210").strip()
-            u_name = st.text_input("भाविकाचे पूर्ण नाव:", key="user_name_input", placeholder="उदा. पंकज देसाई").strip()
-            u_pin = st.text_input("४ अंकी गुप्त पिन (PIN):", type="password", max_chars=4, key="user_pin_input", placeholder="उदा. 1234").strip()
-            st.caption("🔒 टीप: पहिल्यांदा बोली लावताना हा पिन सेट होईल. पुढील प्रत्येक वेळी हाच पिन वापरावा लागेल.")
+            u_mobile = st.text_input("१० अंकी मोबाईल क्रमांक:", max_chars=10, key="u_mob", placeholder="उदा. 9876543210").strip()
+            u_name = st.text_input("भाविकाचे पूर्ण नाव:", key="u_name", placeholder="उदा. पंकज देसाई").strip()
+            u_pin = st.text_input("४ अंकी गुप्त पिन (PIN):", type="password", max_chars=4, key="u_pin", placeholder="उदा. 1234").strip()
+            st.caption("टीप: पहिल्यांदा सेट केलेला ४ अंकी पिन पुढील प्रत्येक वेळी वापरावा लागेल.")
 
         with col_right:
             st.subheader("⚡ झटपट बोली लावा")
-            st.caption("रक्कम वाढ
+            st.write("रक्कम वाढवण्यासाठी खालील बटनावर टॅप करा:")
+
+            val_50 = current_highest + 50
+            val_100 = current_highest + 100
+            val_500 = current_highest + 500
+
+            b1, b2, b3 = st.columns(3)
+            add_clicked = None
+
+            if b1.button(f"+ ₹50\n(₹{val_50})", use_container_width=True):
+                add_clicked = val_50
+            if b2.button(f"+ ₹100\n(₹{val_100})", use_container_width=True):
+                add_clicked = val_100
+            if b3.button(f"+ ₹500\n(₹{val_500})", use_container_width=True):
+                add_clicked = val_500
+
+            st.write("किंवा रक्कम थेट टाका:")
+            min_c = current_highest + 50 if current_highest > 0 else 100
+            with st.form("custom_form", clear_on_submit=False):
+                custom_amt = st.number_input("इच्छित रक्कम (₹)", min_value=min_c, value=min_c, step=50)
+                submit_custom = st.form_
