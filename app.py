@@ -29,17 +29,21 @@ cursor.execute("""
     )
 """)
 
-cursor.execute("PRAGMA table_info(bids)")
-b_cols = [c[1] for c in cursor.fetchall()]
-if "bid_date" not in b_cols:
+# Safe Column Addition (kontihi duplicate column error yenar nahi)
+try:
     cursor.execute("ALTER TABLE bids ADD COLUMN bid_date TEXT DEFAULT ''")
-if "session_day" not in b_cols:
-    cursor.execute("ALTER TABLE bids ADD COLUMN session_day TEXT DEFAULT 'दिवस १'")
+except Exception:
+    pass
 
-cursor.execute("PRAGMA table_info(participants)")
-p_cols = [c[1] for c in cursor.fetchall()]
-if "pin" not in p_cols:
+try:
+    cursor.execute("ALTER TABLE bids ADD COLUMN session_day TEXT DEFAULT 'दिवस १'")
+except Exception:
+    pass
+
+try:
     cursor.execute("ALTER TABLE participants ADD COLUMN pin TEXT DEFAULT ''")
+except Exception:
+    pass
 
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS settings (
@@ -145,146 +149,4 @@ if role == "Admin (प्रशासक)":
 
         c_conn = get_db()
         c = c_conn.cursor()
-        c.execute("SELECT bidder_name, mobile, amount FROM bids WHERE session_day = ? ORDER BY amount DESC LIMIT 1", (current_day,))
-        top = c.fetchone()
-        c_conn.close()
-
-        st.subheader(f"🏆 {current_day} चा विजेता (Live)")
-        if top:
-            st.metric(label=f"विजेता: {top[0]} ({top[1]})", value=f"₹{top[2]}")
-        else:
-            st.metric(label=f"{current_day} साठी अद्याप कोणतीही बोली नाही", value="₹0")
-
-        st.markdown("---")
-
-        st.subheader("📊 अहवाल आणि डाऊनलोड")
-        c_conn = get_db()
-        df_all = pd.read_sql_query(
-            "SELECT timestamp as वेळ, bid_date as तारीख, session_day as दिवस, bidder_name as नाव, mobile as मोबाईल, amount as रक्कम FROM bids ORDER BY id DESC",
-            c_conn
-        )
-        c_conn.close()
-
-        if not df_all.empty:
-            avail_days = sorted(list(df_all["दिवस"].dropna().unique()))
-            view_day = st.selectbox("दिवस निवडा:", ["सर्व दिवस एकत्र"] + avail_days)
-
-            if view_day == "सर्व दिवस एकत्र":
-                st.dataframe(df_all, use_container_width=True, hide_index=True)
-                csv_data = df_all.to_csv(index=False).encode('utf-8')
-                st.download_button("सर्व डेटा CSV डाऊनलोड", data=csv_data, file_name="all_bids.csv", mime="text/csv")
-            else:
-                f_df = df_all[df_all["दिवस"] == view_day]
-                st.dataframe(f_df, use_container_width=True, hide_index=True)
-                csv_d = f_df.to_csv(index=False).encode('utf-8')
-                st.download_button(f"{view_day} CSV डाऊनलोड", data=csv_d, file_name=f"{view_day}.csv", mime="text/csv")
-        else:
-            st.info("कोणतीही बोली नोंदवलेली नाही.")
-
-# ==========================================
-# 2. USER PANEL (4-Digit PIN)
-# ==========================================
-else:
-    st.title("🚩 नवरात्र उत्सव - देवीची पूजा व प्रार्थना बोली")
-    st.markdown(f"#### 🗓️ **{current_day}**")
-
-    if not is_bidding_active:
-        st.warning(f"⚠️ {current_day} साठीची बोली आता समाप्त झाली आहे.")
-        if current_highest > 0:
-            st.success(f"🏆 {current_day} ची अंतिम सर्वोच्च बोली: ₹{current_highest}")
-    else:
-        st.info(f"### 📢 {current_day} चालू सर्वोच्च बोली: **₹{current_highest}**  *(🔴 Live)*")
-
-        st.subheader("📝 तुमची माहिती व सुरक्षित पिन")
-        u_mobile = st.text_input("१० अंकी मोबाईल क्रमांक:", max_chars=10, key="mob_key", placeholder="उदा. 9876543210").strip()
-
-        existing_user = None
-        has_pin = False
-        if len(u_mobile) == 10 and u_mobile.isdigit():
-            c_conn = get_db()
-            c = c_conn.cursor()
-            c.execute("SELECT name, pin FROM participants WHERE mobile = ?", (u_mobile,))
-            existing_user = c.fetchone()
-            c_conn.close()
-            if existing_user and existing_user[1]:
-                has_pin = True
-
-        if existing_user and has_pin:
-            st.info(f"नाव: **{existing_user[0]}**")
-            u_name = existing_user[0]
-            u_pin = st.text_input("४ अंकी गुप्त पिन टाका:", type="password", max_chars=4, key="pin_exist_key", placeholder="****").strip()
-            is_new = False
-        else:
-            def_name = existing_user[0] if existing_user else ""
-            u_name = st.text_input("भाविकाचे पूर्ण नाव:", value=def_name, key="name_new_key", placeholder="उदा. पंकज देसाई").strip()
-            u_pin = st.text_input("स्वतःचा ४ अंकी गुप्त पिन तयार करा:", type="password", max_chars=4, key="pin_new_key", placeholder="उदा. 1234").strip()
-            is_new = True
-
-        st.markdown("---")
-        st.subheader("⚡ झटपट बोली लावा")
-        st.caption("रक्कम वाढवण्यासाठी खालील बटनावर टॅप करा:")
-
-        val_50 = current_highest + 50
-        val_100 = current_highest + 100
-        val_500 = current_highest + 500
-
-        b1, b2, b3 = st.columns(3)
-        add_clicked = None
-
-        if b1.button(f"+ ₹50\n(₹{val_50})", use_container_width=True):
-            add_clicked = val_50
-        if b2.button(f"+ ₹100\n(₹{val_100})", use_container_width=True):
-            add_clicked = val_100
-        if b3.button(f"+ ₹500\n(₹{val_500})", use_container_width=True):
-            add_clicked = val_500
-
-        def process_user_bid(amount_to_bid):
-            if len(u_mobile) < 10 or not u_mobile.isdigit():
-                st.error("कृपया योग्य १० अंकी मोबाईल क्रमांक टाका.")
-                return
-            if not u_name:
-                st.error("कृपया नाव प्रविष्ट करा.")
-                return
-            if len(u_pin) != 4 or not u_pin.isdigit():
-                st.error("कृपया बरोबर ४ अंकी पिन प्रविष्ट करा.")
-                return
-
-            c_conn = get_db()
-            c = c_conn.cursor()
-
-            if not is_new:
-                if str(existing_user[1]) != str(u_pin):
-                    st.error("❌ चुकीचा गुप्त पिन! दुसऱ्याच्या मोबाईल नंबरवरून बोली लावता येणार नाही.")
-                    c_conn.close()
-                    return
-            else:
-                c.execute("INSERT OR REPLACE INTO participants (name, mobile, pin) VALUES (?, ?, ?)", (u_name, u_mobile, u_pin))
-                c_conn.commit()
-
-            c.execute("SELECT MAX(amount) FROM bids WHERE session_day = ?", (current_day,))
-            latest = c.fetchone()[0] or 0
-            if amount_to_bid <= latest:
-                st.error(f"दुसऱ्या भाविकाने नुकतीच बोली ₹{latest} केली आहे. कृपया पुन्हा टॅप करा.")
-                c_conn.close()
-                return
-
-            now_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
-            now_date = datetime.now().strftime("%d-%m-%Y")
-            c.execute(
-                "INSERT INTO bids (timestamp, bid_date, session_day, bidder_name, mobile, amount) VALUES (?, ?, ?, ?, ?, ?)",
-                (now_time, now_date, current_day, u_name, u_mobile, amount_to_bid)
-            )
-            c_conn.commit()
-            c_conn.close()
-            st.success(f"✅ अभिनंदन {u_name}! तुमची ₹{amount_to_bid} ची बोली यशस्वीरित्या नोंदवली गेली आहे.")
-            st.rerun()
-
-        if add_clicked is not None:
-            process_user_bid(add_clicked)
-
-        st.write("किंवा रक्कम थेट टाका:")
-        min_c = current_highest + 50 if current_highest > 0 else 100
-        with st.form("custom_form", clear_on_submit=True):
-            custom_amt = st.number_input("इच्छित रक्कम (₹)", min_value=min_c, value=min_c, step=50)
-            if st.form_submit_button("बोली निश्चित करा", type="primary"):
-                process_user_bid(custom_amt)
+        c
