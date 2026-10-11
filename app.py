@@ -3,10 +3,14 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 
-# डेटाबेस जोडणी
-conn = sqlite3.connect("navratri_bids.db", check_same_thread=False)
-cursor = conn.cursor()
+# डेटाबेस जोडणी फंक्शन
+def get_db_connection():
+    conn = sqlite3.connect("navratri_bids.db", check_same_thread=False)
+    return conn
 
+# टेबल तयार करणे
+conn = get_db_connection()
+cursor = conn.cursor()
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS participants (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -14,7 +18,6 @@ cursor.execute("""
         mobile TEXT UNIQUE
     )
 """)
-
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS bids (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -25,6 +28,7 @@ cursor.execute("""
     )
 """)
 conn.commit()
+conn.close()
 
 st.set_page_config(page_title="देवीची पूजा व प्रार्थना बोली", layout="wide")
 
@@ -36,6 +40,36 @@ if "current_user_mobile" not in st.session_state:
     st.session_state.current_user_mobile = None
 if "current_user_name" not in st.session_state:
     st.session_state.current_user_name = None
+
+# सर्वोच्च बोली मिळवणारे फंक्शन
+def get_highest_bid():
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT MAX(amount) FROM bids")
+    val = c.fetchone()[0]
+    conn.close()
+    return int(val) if val is not None else 0
+
+# नवीन बोली जोडणारे सुरक्षित फंक्शन
+def add_bid(bidder_name, mobile, amount):
+    conn = get_db_connection()
+    c = conn.cursor()
+    c.execute("SELECT MAX(amount) FROM bids")
+    current_max = c.fetchone()[0]
+    current_max = int(current_max) if current_max is not None else 0
+
+    if amount <= current_max:
+        conn.close()
+        return False, f"दुसऱ्या भाविकाने नुकतीच बोली ₹{current_max} केली आहे. कृपया पुन्हा प्रयत्न करा."
+    
+    now = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+    c.execute(
+        "INSERT INTO bids (timestamp, bidder_name, mobile, amount) VALUES (?, ?, ?, ?)",
+        (now, bidder_name, mobile, amount)
+    )
+    conn.commit()
+    conn.close()
+    return True, f"₹{amount} ची बोली यशस्वीरित्या नोंदवली गेली!"
 
 st.sidebar.title("🔐 प्रणाली")
 selected_role = st.sidebar.radio("भूमिका निवडा:", ["सहभागी (User)", "Admin (प्रशासक)"])
@@ -62,8 +96,10 @@ if selected_role == "Admin (प्रशासक)":
 
         st.title("🚩 Admin व्यवस्थापन कक्ष")
 
-        cursor.execute("SELECT bidder_name, mobile, amount FROM bids ORDER BY amount DESC LIMIT 1")
-        top_bid = cursor.fetchone()
+        conn = get_db_connection()
+        c = conn.cursor()
+        c.execute("SELECT bidder_name, mobile, amount FROM bids ORDER BY amount DESC LIMIT 1")
+        top_bid = c.fetchone()
 
         col1, col2 = st.columns([1, 2])
         with col1:
@@ -81,6 +117,8 @@ if selected_role == "Admin (प्रशासक)":
         st.markdown("---")
         st.subheader("📋 सर्व बोलींचा इतिहास")
         df_all = pd.read_sql_query("SELECT timestamp as वेळ, bidder_name as नाव, mobile as मोबाईल, amount as रक्कम FROM bids ORDER BY id DESC", conn)
+        conn.close()
+
         if not df_all.empty:
             st.dataframe(df_all, use_container_width=True, hide_index=True)
             csv = df_all.to_csv(index=False).encode('utf-8')
@@ -94,9 +132,7 @@ if selected_role == "Admin (प्रशासक)":
 else:
     st.title("🚩 नवरात्र उत्सव - देवीची पूजा व प्रार्थना बोली")
 
-    cursor.execute("SELECT MAX(amount) FROM bids")
-    max_res = cursor.fetchone()[0]
-    current_highest = int(max_res) if max_res is not None else 0
+    current_highest = get_highest_bid()
 
     col_title, col_btn = st.columns([4, 1])
     with col_title:
@@ -106,7 +142,7 @@ else:
         if st.button("🔄 ताजी रक्कम तपासा", use_container_width=True):
             st.rerun()
 
-    # युजर लॉगिन झालेला नसल्यास फॉर्म दाखवणे
+    # युजर लॉगिन झालेला नसल्यास
     if not st.session_state.current_user_mobile:
         st.subheader("सहभागी होण्यासाठी माहिती भरा")
         with st.form("login_form"):
@@ -119,53 +155,28 @@ else:
                 if len(clean_mob) < 10 or not clean_mob.isdigit():
                     st.error("कृपया योग्य १० अंकी मोबाईल क्रमांक टाका.")
                 else:
-                    cursor.execute("SELECT name FROM participants WHERE mobile = ?", (clean_mob,))
-                    existing = cursor.fetchone()
+                    conn = get_db_connection()
+                    c = conn.cursor()
+                    c.execute("SELECT name FROM participants WHERE mobile = ?", (clean_mob,))
+                    existing = c.fetchone()
 
                     if existing:
                         st.session_state.current_user_name = existing[0]
                         st.session_state.current_user_mobile = clean_mob
+                        conn.close()
                         st.rerun()
                     else:
                         if not clean_name:
                             st.warning("पहिल्यांदा नोंदणी करताना नाव भरणे आवश्यक आहे.")
+                            conn.close()
                         else:
-                            cursor.execute("INSERT INTO participants (name, mobile) VALUES (?, ?)", (clean_name, clean_mob))
+                            c.execute("INSERT INTO participants (name, mobile) VALUES (?, ?)", (clean_name, clean_mob))
                             conn.commit()
+                            conn.close()
                             st.session_state.current_user_name = clean_name
                             st.session_state.current_user_mobile = clean_mob
                             st.rerun()
     else:
         # लॉगिन झाल्यानंतर
         u_name = st.session_state.current_user_name
-        u_mobile = st.session_state.current_user_mobile
-
-        top_col1, top_col2 = st.columns([3, 1])
-        with top_col1:
-            st.success(f"👤 स्वागत आहे: **{u_name}** ({u_mobile})")
-        with top_col2:
-            if st.button("बाहेर पडा (Logout)"):
-                st.session_state.current_user_mobile = None
-                st.session_state.current_user_name = None
-                st.rerun()
-
-        col_bid, col_history = st.columns([1, 1])
-
-        with col_bid:
-            st.subheader("⚡ झटपट बोली लावा")
-            st.caption("रक्कम वाढवण्यासाठी खालील बटनावर टॅप करा:")
-            b1, b2, b3 = st.columns(3)
-
-            add_val = None
-            if b1.button(f"+ ₹50\n(₹{current_highest + 50})", use_container_width=True):
-                add_val = current_highest + 50
-            if b2.button(f"+ ₹100\n(₹{current_highest + 100})", use_container_width=True):
-                add_val = current_highest + 100
-            if b3.button(f"+ ₹500\n(₹{current_highest + 500})", use_container_width=True):
-                add_val = current_highest + 500
-
-            if add_val:
-                cursor.execute("SELECT MAX(amount) FROM bids")
-                latest = cursor.fetchone()[0] or 0
-                if add_val <= latest:
-                    st.error(f"कोणीतरी नुकतीच बोली ₹{latest} केली आहे. कृपया पुन्हा टॅप करा.")
+        u_mobile = st
