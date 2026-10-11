@@ -11,7 +11,7 @@ cursor.execute('''
     CREATE TABLE IF NOT EXISTS participants (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE,
-        mobile TEXT
+        mobile TEXT UNIQUE
     )
 ''')
 
@@ -28,16 +28,17 @@ conn.commit()
 
 st.set_page_config(page_title="देवीची पूजा व प्रार्थना बोली", layout="wide")
 
-# पासवर्ड कॉन्फिगरेशन
-ADMIN_PASSWORD = "admin123"  # आवश्यकतेनुसार पासवर्ड बदला
+ADMIN_PASSWORD = "admin123"  # Admin चा पासवर्ड
 
-# सेशन स्टेट व्यवस्थापन
-if "role" not in st.session_state:
-    st.session_state.role = "सहभागी (User)"
+# सेशन स्टेट व्हेरिएबल्स
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
+if "current_user_mobile" not in st.session_state:
+    st.session_state.current_user_mobile = None
+if "current_user_name" not in st.session_state:
+    st.session_state.current_user_name = None
 
-# साइडबार - रोल आणि लॉगिन निवड
+# साइडबार - रोल निवड
 st.sidebar.title("🔐 प्रणाली प्रवेश")
 selected_role = st.sidebar.radio("तुमची भूमिका निवडा:", ["सहभागी (User)", "Admin (प्रशासक)"])
 
@@ -49,8 +50,7 @@ if selected_role == "Admin (प्रशासक)":
         st.subheader("प्रशासक लॉगिन (Admin Login)")
         with st.form("admin_login_form"):
             pwd = st.text_input("Admin पासवर्ड प्रविष्ट करा", type="password")
-            login_btn = st.form_submit_button("लॉगिन करा")
-            if login_btn:
+            if st.form_submit_button("लॉगिन करा"):
                 if pwd == ADMIN_PASSWORD:
                     st.session_state.admin_logged_in = True
                     st.success("यशस्वीरित्या लॉगिन झाले!")
@@ -58,8 +58,7 @@ if selected_role == "Admin (प्रशासक)":
                 else:
                     st.error("चुकीचा पासवर्ड!")
     else:
-        # लॉगिन झाल्यानंतरचे Admin दृश्य
-        st.sidebar.success("Admin म्हणून लॉगिन आहात")
+        st.sidebar.success("Admin लॉगिन आहे")
         if st.sidebar.button("लॉगआउट करा"):
             st.session_state.admin_logged_in = False
             st.rerun()
@@ -70,7 +69,7 @@ if selected_role == "Admin (प्रशासक)":
         with st.expander("➕ नवीन सहभागी व्यक्ती जोडा", expanded=False):
             with st.form("add_p_form", clear_on_submit=True):
                 p_name = st.text_input("सहभागीचे नाव")
-                p_mobile = st.text_input("मोबाईल क्रमांक")
+                p_mobile = st.text_input("मोबाईल क्रमांक (१० अंकी)")
                 if st.form_submit_button("सहभागी जोडा"):
                     if p_name.strip() and p_mobile.strip():
                         try:
@@ -79,7 +78,7 @@ if selected_role == "Admin (प्रशासक)":
                             st.success(f"{p_name} यादीत जोडले गेले!")
                             st.rerun()
                         except sqlite3.IntegrityError:
-                            st.error("हे नाव आधीच नोंदवलेले आहे.")
+                            st.error("हे नाव किंवा मोबाईल क्रमांक आधीच नोंदवलेला आहे.")
                     else:
                         st.warning("नाव आणि मोबाईल दोन्ही भरणे आवश्यक आहे.")
 
@@ -117,58 +116,78 @@ if selected_role == "Admin (प्रशासक)":
 else:
     st.title("🚩 नवरात्र उत्सव - देवीची पूजा व प्रार्थना बोली")
 
-    # नोंदणीकृत सहभागींची यादी मिळवणे
-    cursor.execute("SELECT name, mobile FROM participants ORDER BY name ASC")
-    participants = cursor.fetchall()
+    # सध्या चालू असलेली सर्वोच्च रक्कम मिळवणे
+    cursor.execute("SELECT MAX(amount) FROM bids")
+    max_res = cursor.fetchone()[0]
+    current_highest = max_res if max_res is not None else 0
 
-    if not participants:
-        st.warning("सध्या सहभागींची नोंदणी पूर्ण झालेली नाही. कृपया व्यवस्थापकांशी (Admin) संपर्क साधा.")
+    # ही रक्कम सर्वांना दिसेल (नाव कोणाचेही दिसणार नाही)
+    st.info(f"### 📢 सध्या चालू असलेली सर्वोच्च बोली रक्कम: **₹{current_highest}**")
+
+    # युजर लॉगिन झालेला नसेल तर:
+    if not st.session_state.current_user_mobile:
+        st.subheader("प्रवेश करण्यासाठी तुमचा मोबाईल क्रमांक टाका")
+        with st.form("user_login_form"):
+            user_mob_input = st.text_input("नोंदणीकृत मोबाईल क्रमांक:", placeholder="उदा. 98xxxxxxxx")
+            login_user = st.form_submit_button("प्रवेश करा")
+
+            if login_user:
+                mob = user_mob_input.strip()
+                cursor.execute("SELECT name, mobile FROM participants WHERE mobile = ?", (mob,))
+                user_found = cursor.fetchone()
+
+                if user_found:
+                    st.session_state.current_user_name = user_found[0]
+                    st.session_state.current_user_mobile = user_found[1]
+                    st.success(f"स्वागत आहे, {user_found[0]}!")
+                    st.rerun()
+                else:
+                    st.error("हा मोबाईल क्रमांक नोंदणीकृत नाही. कृपया मंडळाच्या कार्यकर्त्यांशी/Admin शी संपर्क साधा.")
     else:
-        # सध्या चालू असलेली सर्वोच्च रक्कम मिळवणे (नाव न दाखवता)
-        cursor.execute("SELECT MAX(amount) FROM bids")
-        max_res = cursor.fetchone()[0]
-        current_highest = max_res if max_res is not None else 0
+        # युजर लॉगिन झाल्यावर दिसणारा भाग
+        u_name = st.session_state.current_user_name
+        u_mobile = st.session_state.current_user_mobile
 
-        # वर ठळकपणे सध्या चालू असलेली एकूण रक्कम दाखवणे
-        st.info(f"### 📢 सध्या चालू असलेली सर्वोच्च बोली रक्कम: **₹{current_highest}**")
+        top_col1, top_col2 = st.columns([3, 1])
+        with top_col1:
+            st.success(f"👤 स्वागत आहे: **{u_name}** ({u_mobile})")
+        with top_col2:
+            if st.button("लॉगआउट / दुसरे खाते"):
+                st.session_state.current_user_mobile = None
+                st.session_state.current_user_name = None
+                st.rerun()
 
         col_bid, col_history = st.columns([1, 1])
 
+        # बोली लावणे
         with col_bid:
             st.subheader("तुमची बोली लावा")
-            user_options = [f"{p[0]} ({p[1]})" for p in participants]
-            selected_user_str = st.selectbox("तुमचे नाव निवडा:", user_options)
-
-            idx = user_options.index(selected_user_str)
-            user_name = participants[idx][0]
-            user_mobile = participants[idx][1]
-
             min_bid = current_highest + 50 if current_highest > 0 else 100
-            
+
             with st.form("user_bid_form", clear_on_submit=True):
                 bid_amount = st.number_input("बोली रक्कम (₹)", min_value=min_bid, value=min_bid, step=50)
                 submit_bid = st.form_submit_button("बोली निश्चित करा", type="primary")
 
                 if submit_bid:
                     if bid_amount <= current_highest:
-                        st.error(f"रक्कम सध्या चालू असलेल्या सर्वोच्च रकमेपेक्षा (₹{current_highest}) जास्त असावी.")
+                        st.error(f"रक्कम सध्याच्या सर्वोच्च रकमेपेक्षा (₹{current_highest}) जास्त असावी.")
                     else:
                         now = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
                         cursor.execute(
                             "INSERT INTO bids (timestamp, bidder_name, mobile, amount) VALUES (?, ?, ?, ?)",
-                            (now, user_name, user_mobile, bid_amount)
+                            (now, u_name, u_mobile, bid_amount)
                         )
                         conn.commit()
                         st.success(f"तुमची ₹{bid_amount} ची बोली यशस्वीरित्या नोंदवली गेली!")
                         st.rerun()
 
+        # फक्त त्या युजरचा इतिहास
         with col_history:
             st.subheader("📜 फक्त तुमच्या बोलींचा इतिहास")
-            # फक्त निवडलेल्या व्यक्तीचा इतिहास दाखवणे
             df_my_bids = pd.read_sql_query(
-                "SELECT timestamp as वेळ, amount as रक्कम FROM bids WHERE bidder_name = ? AND mobile = ? ORDER BY id DESC",
+                "SELECT timestamp as वेळ, amount as रक्कम FROM bids WHERE mobile = ? ORDER BY id DESC",
                 conn,
-                params=(user_name, user_mobile)
+                params=(u_mobile,)
             )
 
             if not df_my_bids.empty:
