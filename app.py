@@ -3,18 +3,19 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 
+# डेटाबेस जोडणी
 conn = sqlite3.connect("navratri_bids.db", check_same_thread=False)
 cursor = conn.cursor()
 
-cursor.execute('''
+cursor.execute("""
     CREATE TABLE IF NOT EXISTS participants (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT,
         mobile TEXT UNIQUE
     )
-''')
+""")
 
-cursor.execute('''
+cursor.execute("""
     CREATE TABLE IF NOT EXISTS bids (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         timestamp TEXT,
@@ -22,7 +23,7 @@ cursor.execute('''
         mobile TEXT,
         amount INTEGER
     )
-''')
+""")
 conn.commit()
 
 st.set_page_config(page_title="देवीची पूजा व प्रार्थना बोली", layout="wide")
@@ -109,4 +110,28 @@ else:
                 clean_name = user_name_input.strip()
 
                 if len(clean_mob) < 10 or not clean_mob.isdigit():
-                    st.
+                    st.error("कृपया योग्य १० अंकी मोबाईल क्रमांक टाका.")
+                else:
+                    cursor.execute("SELECT name FROM participants WHERE mobile = ?", (clean_mob,))
+                    existing = cursor.fetchone()
+
+                    if existing:
+                        st.session_state.current_user_name = existing[0]
+                        st.session_state.current_user_mobile = clean_mob
+                        st.rerun()
+                    else:
+                        if not clean_name:
+                            st.warning("पहिल्यांदा नोंदणी करताना नाव भरणे आवश्यक आहे.")
+                        else:
+                            cursor.execute("INSERT INTO participants (name, mobile) VALUES (?, ?)", (clean_name, clean_mob))
+                            conn.commit()
+                            st.session_state.current_user_name = clean_name
+                            st.session_state.current_user_mobile = clean_mob
+                            st.rerun()
+    else:
+        u_name = st.session_state.current_user_name
+        u_mobile = st.session_state.current_user_mobile
+
+        top_col1, top_col2 = st.columns([3, 1])
+        with top_col1:
+            st
