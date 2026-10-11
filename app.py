@@ -4,14 +4,12 @@ import sqlite3
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
-# Database connection
 def get_db():
     return sqlite3.connect("navratri_bids.db", check_same_thread=False)
 
 conn = get_db()
 cursor = conn.cursor()
 
-# Bids table
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS bids (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,7 +20,6 @@ cursor.execute("""
     )
 """)
 
-# Participants table
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS participants (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +29,6 @@ cursor.execute("""
     )
 """)
 
-# Bids table madhye columns check karne
 cursor.execute("PRAGMA table_info(bids)")
 bids_cols = [col[1] for col in cursor.fetchall()]
 if "bid_date" not in bids_cols:
@@ -40,13 +36,11 @@ if "bid_date" not in bids_cols:
 if "session_day" not in bids_cols:
     cursor.execute("ALTER TABLE bids ADD COLUMN session_day TEXT DEFAULT 'दिवस १'")
 
-# Participants table madhye PIN column check karne (Auto Fix)
 cursor.execute("PRAGMA table_info(participants)")
 parts_cols = [col[1] for col in cursor.fetchall()]
 if "pin" not in parts_cols:
     cursor.execute("ALTER TABLE participants ADD COLUMN pin TEXT DEFAULT ''")
 
-# Settings table
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS settings (
         id INTEGER PRIMARY KEY,
@@ -60,7 +54,6 @@ conn.close()
 
 st.set_page_config(page_title="देवीची पूजा व प्रार्थना बोली", layout="centered")
 
-# Auto-refresh every 3 seconds
 st_autorefresh(interval=3000, key="auto_refresher")
 
 ADMIN_PASSWORD = "admin123"
@@ -91,7 +84,7 @@ st.sidebar.title("🔐 प्रणाली")
 role = st.sidebar.radio("भूमिका निवडा:", ["सहभागी (User)", "Admin (प्रशासक)"])
 
 # ==========================================
-# १. ADMIN PANEL
+# 1. ADMIN PANEL
 # ==========================================
 if role == "Admin (प्रशासक)":
     if "admin_logged_in" not in st.session_state:
@@ -177,4 +170,6 @@ if role == "Admin (प्रशासक)":
             view_day = st.selectbox("कोणत्या दिवसाचा अहवाल पाहायचा आहे?", ["सर्व दिवस एकत्र"] + avail_days)
 
             if view_day == "सर्व दिवस एकत्र":
-                st.dataframe(
+                st.dataframe(df_all, use_container_width=True, hide_index=True)
+                csv = df_all.to_csv(index=False).encode('utf-8')
+                st.download_button("सर्व दिवसांचा डेटा (CSV) डाऊनलोड करा", data=csv, file_name="all
