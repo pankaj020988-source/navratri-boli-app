@@ -186,7 +186,7 @@ if role == "Admin (प्रशासक)":
             st.info("कोणतीही बोली नोंदवलेली नाही.")
 
 # ==========================================
-# 2. USER PANEL (Always Visible)
+# 2. USER PANEL
 # ==========================================
 else:
     st.title("🚩 नवरात्र उत्सव - देवीची पूजा व प्रार्थना बोली")
@@ -230,4 +230,59 @@ else:
             min_c = current_highest + 50 if current_highest > 0 else 100
             with st.form("custom_form", clear_on_submit=False):
                 custom_amt = st.number_input("इच्छित रक्कम (₹)", min_value=min_c, value=min_c, step=50)
-                submit_custom = st.form_
+                submit_custom = st.form_submit_button("बोली निश्चित करा", type="primary")
+
+        bid_to_process = None
+        if add_clicked is not None:
+            bid_to_process = add_clicked
+        elif submit_custom:
+            bid_to_process = custom_amt
+
+        if bid_to_process is not None:
+            if len(u_mobile) != 10 or not u_mobile.isdigit():
+                st.error("कृपया योग्य १० अंकी मोबाईल क्रमांक टाका.")
+            elif not u_name:
+                st.error("कृपया भाविकाचे नाव टाका.")
+            elif len(u_pin) != 4 or not u_pin.isdigit():
+                st.error("कृपया बरोबर ४ अंकी गुप्त पिन प्रविष्ट करा.")
+            else:
+                c_conn = get_db()
+                c = c_conn.cursor()
+
+                c.execute("SELECT name, pin FROM participants WHERE mobile = ?", (u_mobile,))
+                user_record = c.fetchone()
+
+                pin_valid = False
+                if user_record:
+                    saved_pin = str(user_record[1])
+                    if saved_pin == u_pin or saved_pin == "":
+                        if saved_pin == "":
+                            c.execute("UPDATE participants SET pin = ?, name = ? WHERE mobile = ?", (u_pin, u_name, u_mobile))
+                            c_conn.commit()
+                        pin_valid = True
+                    else:
+                        st.error("चुकीचा गुप्त पिन! या मोबाईल नंबरसाठी सेट केलेला खरा पिन टाका.")
+                        c_conn.close()
+                else:
+                    c.execute("INSERT INTO participants (name, mobile, pin) VALUES (?, ?, ?)", (u_name, u_mobile, u_pin))
+                    c_conn.commit()
+                    pin_valid = True
+
+                if pin_valid:
+                    c.execute("SELECT MAX(amount) FROM bids WHERE session_day = ?", (current_day,))
+                    latest = c.fetchone()[0] or 0
+
+                    if bid_to_process <= latest:
+                        st.error(f"दुसऱ्या भाविकाने नुकतीच बोली ₹{latest} केली आहे. कृपया पुन्हा टॅप करा.")
+                        c_conn.close()
+                    else:
+                        now_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                        now_date = datetime.now().strftime("%d-%m-%Y")
+                        c.execute(
+                            "INSERT INTO bids (timestamp, bid_date, session_day, bidder_name, mobile, amount) VALUES (?, ?, ?, ?, ?, ?)",
+                            (now_time, now_date, current_day, u_name, u_mobile, bid_to_process)
+                        )
+                        c_conn.commit()
+                        c_conn.close()
+                        st.success(f"अभिनंदन {u_name}! तुमची ₹{bid_to_process} ची बोली यशस्वीरित्या नोंदवली गेली आहे.")
+                        st.rerun()
