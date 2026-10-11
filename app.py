@@ -4,14 +4,12 @@ import sqlite3
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
-# Database connect karne
 def get_db():
     return sqlite3.connect("navratri_bids.db", check_same_thread=False)
 
 conn = get_db()
 cursor = conn.cursor()
 
-# Bids table
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS bids (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -24,7 +22,6 @@ cursor.execute("""
     )
 """)
 
-# Participants table
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS participants (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,7 +31,6 @@ cursor.execute("""
     )
 """)
 
-# Safe alter columns jar nasil tar
 try:
     cursor.execute("ALTER TABLE bids ADD COLUMN bid_date TEXT DEFAULT ''")
 except Exception:
@@ -50,7 +46,6 @@ try:
 except Exception:
     pass
 
-# Settings table
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS settings (
         id INTEGER PRIMARY KEY,
@@ -64,12 +59,10 @@ conn.close()
 
 st.set_page_config(page_title="देवीची पूजा व प्रार्थना बोली", layout="wide")
 
-# Har 3 sec auto-refresh
 st_autorefresh(interval=3000, key="navratri_refresh_timer")
 
 ADMIN_PWD = "admin123"
 
-# Current settings
 def get_settings():
     c_conn = get_db()
     c = c_conn.cursor()
@@ -82,7 +75,6 @@ def get_settings():
 
 current_day, is_bidding_active = get_settings()
 
-# Current highest bid
 def get_highest_bid(day):
     c_conn = get_db()
     c = c_conn.cursor()
@@ -194,7 +186,7 @@ if role == "Admin (प्रशासक)":
             st.info("कोणतीही बोली नोंदवलेली नाही.")
 
 # ==========================================
-# 2. USER PANEL
+# 2. USER PANEL (Always Visible & 100% Reliable)
 # ==========================================
 else:
     st.title("🚩 नवरात्र उत्सव - देवीची पूजा व प्रार्थना बोली")
@@ -207,26 +199,15 @@ else:
     else:
         st.info(f"### 📢 {current_day} चालू सर्वोच्च बोली: **₹{current_highest}**  *(🔴 Live)*")
 
-        col_main, _ = st.columns([2, 1])
-        with col_main:
-            st.subheader("📝 तुमची माहिती व सुरक्षित पिन")
-            u_mobile = st.text_input("१० अंकी मोबाईल क्रमांक:", max_chars=10, key="mob_key", placeholder="उदा. 9876543210").strip()
+        col_left, col_right = st.columns([1, 1])
 
-            existing_user = None
-            has_pin = False
-            if len(u_mobile) == 10 and u_mobile.isdigit():
-                c_conn = get_db()
-                c = c_conn.cursor()
-                c.execute("SELECT name, pin FROM participants WHERE mobile = ?", (u_mobile,))
-                existing_user = c.fetchone()
-                c_conn.close()
-                if existing_user and existing_user[1]:
-                    has_pin = True
+        with col_left:
+            st.subheader("📝 भाविकाची माहिती व गुप्त पिन")
+            u_mobile = st.text_input("१० अंकी मोबाईल क्रमांक:", max_chars=10, key="user_mob_input", placeholder="उदा. 9876543210").strip()
+            u_name = st.text_input("भाविकाचे पूर्ण नाव:", key="user_name_input", placeholder="उदा. पंकज देसाई").strip()
+            u_pin = st.text_input("४ अंकी गुप्त पिन (PIN):", type="password", max_chars=4, key="user_pin_input", placeholder="उदा. 1234").strip()
+            st.caption("🔒 टीप: पहिल्यांदा बोली लावताना हा पिन सेट होईल. पुढील प्रत्येक वेळी हाच पिन वापरावा लागेल.")
 
-            if existing_user and has_pin:
-                st.info(f"नाव: **{existing_user[0]}**")
-                u_name = existing_user[0]
-                u_pin = st.text_input("४ अंकी गुप्त पिन टाका:", type="password", max_chars=4, key="pin_exist_key", placeholder="****").strip()
-                is_new = False
-            else:
-                def_name = existing_user[0] if existing_user else ""
+        with col_right:
+            st.subheader("⚡ झटपट बोली लावा")
+            st.caption("रक्कम वाढ
