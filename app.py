@@ -4,14 +4,13 @@ import sqlite3
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
-# डेटाबेस जोडणी आणि सुरक्षित स्कीमा अपडेट
+# डेटाबेस जोडणी आणि कॉलम तपासणी
 def get_db():
     return sqlite3.connect("navratri_bids.db", check_same_thread=False)
 
 conn = get_db()
 cursor = conn.cursor()
 
-# मूळ टेबल तयार करणे (नसल्यास)
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS bids (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -22,16 +21,14 @@ cursor.execute("""
     )
 """)
 
-# जुन्या टेबलमध्ये नवीन कॉलम नसल्यास सुरक्षितपणे जोडणे
 cursor.execute("PRAGMA table_info(bids)")
-columns = [info[1] for info in cursor.fetchall()]
+cols = [col[1] for col in cursor.fetchall()]
 
-if "bid_date" not in columns:
+if "bid_date" not in cols:
     cursor.execute("ALTER TABLE bids ADD COLUMN bid_date TEXT DEFAULT ''")
-if "session_day" not in columns:
+if "session_day" not in cols:
     cursor.execute("ALTER TABLE bids ADD COLUMN session_day TEXT DEFAULT 'दिवस १'")
 
-# सिस्टीम सेटिंग्ज टेबल
 cursor.execute("""
     CREATE TABLE IF NOT EXISTS settings (
         id INTEGER PRIMARY KEY,
@@ -45,12 +42,12 @@ conn.close()
 
 st.set_page_config(page_title="देवीची पूजा व प्रार्थना बोली", layout="wide")
 
-# दर ३ सेकंदांनी ऑटो-रिफ्रेश
-st_autorefresh(interval=3000, key="bidding_counter")
+# दर ३ सेकंदांनी आपोआप रिफ्रेश
+st_autorefresh(interval=3000, key="auto_refresher")
 
 ADMIN_PASSWORD = "admin123"
 
-# चालू सेटिंग्ज मिळवणे
+# सेटिंग्ज मिळवणे
 def get_settings():
     c_conn = get_db()
     c = c_conn.cursor()
@@ -63,7 +60,7 @@ def get_settings():
 
 current_day, is_bidding_active = get_settings()
 
-# चालू दिवसाची सर्वोच्च बोली
+# चालू दिवसाची सर्वोच्च रक्कम
 def get_highest_bid_for_day(day):
     c_conn = get_db()
     c = c_conn.cursor()
@@ -103,7 +100,6 @@ if role == "Admin (प्रशासक)":
 
         st.title("🚩 Admin व्यवस्थापन व नियंत्रण कक्ष")
 
-        # दिवस आणि चालू/बंद नियंत्रण
         st.subheader("⚙️ बोली सत्र नियंत्रण")
         ctrl_col1, ctrl_col2, ctrl_col3 = st.columns([2, 2, 1])
 
@@ -115,7 +111,7 @@ if role == "Admin (प्रशासक)":
                 days_list,
                 index=days_list.index(current_day) if current_day in days_list else 0
             )
-        
+
         with ctrl_col2:
             new_status = st.radio(
                 "बोली स्थिती:",
@@ -139,7 +135,6 @@ if role == "Admin (प्रशासक)":
 
         st.markdown("---")
 
-        # चालू दिवसाचा विजेता
         c_conn = get_db()
         c = c_conn.cursor()
         c.execute("SELECT bidder_name, mobile, amount FROM bids WHERE session_day = ? ORDER BY amount DESC LIMIT 1", (current_day,))
@@ -153,8 +148,7 @@ if role == "Admin (प्रशासक)":
             st.metric(label=f"{current_day} साठी अद्याप कोणतीही बोली नाही", value="₹0")
 
         st.markdown("---")
-        
-        # मागील सर्व दिवसांचा कायमस्वरूपी डेटा
+
         st.subheader("📊 अहवाल आणि डेटा डाऊनलोड")
         c_conn = get_db()
         df_all = pd.read_sql_query(
@@ -166,7 +160,7 @@ if role == "Admin (प्रशासक)":
         if not df_all.empty:
             avail_days = sorted(list(df_all["दिवस"].dropna().unique()))
             view_day = st.selectbox("कोणत्या दिवसाचा अहवाल पाहायचा आहे?", ["सर्व दिवस एकत्र"] + avail_days)
-            
+
             if view_day == "सर्व दिवस एकत्र":
                 st.dataframe(df_all, use_container_width=True, hide_index=True)
                 csv = df_all.to_csv(index=False).encode('utf-8')
@@ -186,21 +180,101 @@ else:
     st.title("🚩 नवरात्र उत्सव - देवीची पूजा व प्रार्थना बोली")
     st.markdown(f"#### 🗓️ **{current_day}**")
 
-    # जर बोली बंद असेल तर
     if not is_bidding_active:
         st.warning(f"⚠️ **{current_day} साठीची बोली आता समाप्त झाली आहे.** पुढील सत्रासाठी कृपया व्यवस्थापनाशी संपर्क साधा.")
         if current_highest > 0:
             st.success(f"🏆 {current_day} ची अंतिम सर्वोच्च बोली: **₹{current_highest}**")
     else:
-        st.info(f"### 📢 {current_day} चालू सर्वोच्च बोली: **₹{current_highest}**  *(🔴 Live दर ३ सेकंदांनी ऑटो-रिफ्रेश)*")
+        st.info(f"### 📢 {current_day} चालू सर्वोच्च बोली: **₹{current_highest}**  *(🔴 Live)*")
 
         col_left, col_right = st.columns([1, 1])
 
         with col_left:
             st.subheader("📝 तुमची माहिती")
-            n_in = st.text_input("भाविकाचे पूर्ण नाव:", key="p_name_val", placeholder="उदा. पंकज देसाई")
-            m_in = st.text_input("१० अंकी मोबाईल क्रमांक:", key="p_mob_val", placeholder="उदा. 98xxxxxxxx")
+            user_name = st.text_input("भाविकाचे पूर्ण नाव:", key="p_name_val", placeholder="उदा. पंकज देसाई").strip()
+            user_mob = st.text_input("१० अंकी मोबाईल क्रमांक:", key="p_mob_val", placeholder="उदा. 98xxxxxxxx").strip()
 
-            s1 = n_in.strip()
-            s2 = m_in.strip()
-            if s1.isdigit() and not s2.isdigit():
+            st.markdown("---")
+            st.subheader("⚡ झटपट बोली लावा")
+            st.caption("रक्कम वाढवण्यासाठी खालील बटनावर टॅप करा:")
+
+            val_50 = current_highest + 50
+            val_100 = current_highest + 100
+            val_500 = current_highest + 500
+
+            b1, b2, b3 = st.columns(3)
+            add_clicked = None
+
+            if b1.button(f"+ ₹50\n(₹{val_50})", use_container_width=True):
+                add_clicked = val_50
+            if b2.button(f"+ ₹100\n(₹{val_100})", use_container_width=True):
+                add_clicked = val_100
+            if b3.button(f"+ ₹500\n(₹{val_500})", use_container_width=True):
+                add_clicked = val_500
+
+            if add_clicked is not None:
+                if not user_name or len(user_mob) < 10:
+                    st.error("कृपया आधी तुमचे नाव आणि १० अंकी मोबाईल क्रमांक वर भरा.")
+                else:
+                    c_conn = get_db()
+                    c = c_conn.cursor()
+                    c.execute("SELECT MAX(amount) FROM bids WHERE session_day = ?", (current_day,))
+                    latest = c.fetchone()[0] or 0
+                    if add_clicked <= latest:
+                        st.error(f"दुसऱ्या भाविकाने नुकतीच बोली ₹{latest} केली आहे. कृपया पुन्हा टॅप करा.")
+                        c_conn.close()
+                    else:
+                        now_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                        now_date = datetime.now().strftime("%d-%m-%Y")
+                        c.execute(
+                            "INSERT INTO bids (timestamp, bid_date, session_day, bidder_name, mobile, amount) VALUES (?, ?, ?, ?, ?, ?)",
+                            (now_time, now_date, current_day, user_name, user_mob, add_clicked)
+                        )
+                        c_conn.commit()
+                        c_conn.close()
+                        st.toast(f"₹{add_clicked} ची बोली यशस्वीरित्या नोंदवली गेली!", icon="✅")
+                        st.rerun()
+
+            st.write("किंवा रक्कम थेट टाका:")
+            min_c = current_highest + 50 if current_highest > 0 else 100
+            with st.form("custom_form", clear_on_submit=True):
+                custom_amt = st.number_input("इच्छित रक्कम (₹)", min_value=min_c, value=min_c, step=50)
+                if st.form_submit_button("बोली निश्चित करा", type="primary"):
+                    if not user_name or len(user_mob) < 10:
+                        st.error("कृपया आधी नाव आणि १० अंकी मोबाईल क्रमांक भरा.")
+                    else:
+                        c_conn = get_db()
+                        c = c_conn.cursor()
+                        c.execute("SELECT MAX(amount) FROM bids WHERE session_day = ?", (current_day,))
+                        latest = c.fetchone()[0] or 0
+                        if custom_amt <= latest:
+                            st.error(f"रक्कम सध्याच्या सर्वोच्च रकमेपेक्षा (₹{latest}) जास्त असावी.")
+                            c_conn.close()
+                        else:
+                            now_time = datetime.now().strftime("%d-%m-%Y %H:%M:%S")
+                            now_date = datetime.now().strftime("%d-%m-%Y")
+                            c.execute(
+                                "INSERT INTO bids (timestamp, bid_date, session_day, bidder_name, mobile, amount) VALUES (?, ?, ?, ?, ?, ?)",
+                                (now_time, now_date, current_day, user_name, user_mob, custom_amt)
+                            )
+                            c_conn.commit()
+                            c_conn.close()
+                            st.toast(f"₹{custom_amt} ची बोली नोंदवली गेली!", icon="✅")
+                            st.rerun()
+
+        with col_right:
+            st.subheader(f"📜 फक्त तुमच्या आजच्या ({current_day}) बोली")
+            if user_mob and len(user_mob) >= 10:
+                c_conn = get_db()
+                df_my = pd.read_sql_query(
+                    "SELECT timestamp as वेळ, amount as रक्कम FROM bids WHERE mobile = ? AND session_day = ? ORDER BY id DESC",
+                    c_conn,
+                    params=(user_mob, current_day)
+                )
+                c_conn.close()
+                if not df_my.empty:
+                    st.dataframe(df_my, use_container_width=True, hide_index=True)
+                else:
+                    st.info(f"{current_day} साठी या मोबाईल नंबरवरून अद्याप कोणतीही बोली आलेली नाही.")
+            else:
+                st.caption("मोबाईल क्रमांक भरल्यानंतर तुमच्या बोली येथे दिसतील.")
