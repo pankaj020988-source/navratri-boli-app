@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 from datetime import datetime
-import time
 
 # डेटाबेस जोडणी
 conn = sqlite3.connect("navratri_bids.db", check_same_thread=False)
@@ -31,7 +30,7 @@ st.set_page_config(page_title="देवीची पूजा व प्रा�
 
 ADMIN_PASSWORD = "admin123"
 
-# URL वरून युजर ओळखणे (Query Params)
+# URL वरून युजर ओळखणे
 query_params = st.query_params
 
 if "admin_logged_in" not in st.session_state:
@@ -41,7 +40,6 @@ if "current_user_mobile" not in st.session_state:
     st.session_state.current_user_mobile = None
     st.session_state.current_user_name = None
 
-# URL मध्ये नंबर असल्यास डेटाबेसमधून पडताळणी
 saved_mob = query_params.get("user", None)
 if saved_mob and not st.session_state.current_user_mobile:
     cursor.execute("SELECT name, mobile FROM participants WHERE mobile = ?", (str(saved_mob).strip(),))
@@ -84,7 +82,7 @@ if selected_role == "Admin (प्रशासक)":
         with col1:
             st.subheader("🏆 सध्याचा विजेता")
             if top_bid:
-                st.metric(label=f"विजेता: {top_bid[0]} ({top_bid[1]})", value=f"₹{top_bid[2]}")
+                st.metric(label="विजेता: " + str(top_bid[0]) + " (" + str(top_bid[1]) + ")", value="₹" + str(top_bid[2]))
             else:
                 st.metric(label="अद्याप कोणतीही बोली नाही", value="₹0")
 
@@ -112,11 +110,11 @@ else:
     # चालू सर्वोच्च रक्कम मिळवणे
     cursor.execute("SELECT MAX(amount) FROM bids")
     max_res = cursor.fetchone()[0]
-    current_highest = max_res if max_res is not None else 0
+    current_highest = int(max_res) if max_res is not None else 0
 
     col_title, col_btn = st.columns([4, 1])
     with col_title:
-        st.info(f"### 📢 सध्या चालू असलेली सर्वोच्च बोली रक्कम: **₹{current_highest}**")
+        st.info("### 📢 सध्या चालू असलेली सर्वोच्च बोली रक्कम: ₹" + str(current_highest))
     with col_btn:
         st.write("")
         if st.button("🔄 ताजी रक्कम तपासा", use_container_width=True):
@@ -152,32 +150,4 @@ else:
                             cursor.execute("INSERT INTO participants (name, mobile) VALUES (?, ?)", (clean_name, clean_mob))
                             conn.commit()
                             st.session_state.current_user_name = clean_name
-                            st.session_state.current_user_mobile = clean_mob
-                            st.query_params["user"] = clean_mob
-                            st.rerun()
-    else:
-        # युजर लॉगिन असल्यास
-        u_name = st.session_state.current_user_name
-        u_mobile = st.session_state.current_user_mobile
-
-        top_col1, top_col2 = st.columns([3, 1])
-        with top_col1:
-            st.success(f"👤 स्वागत आहे: **{u_name}** ({u_mobile})")
-        with top_col2:
-            if st.button("बाहेर पडा (Logout)"):
-                st.session_state.current_user_mobile = None
-                st.session_state.current_user_name = None
-                st.query_params.clear()
-                st.rerun()
-
-        col_bid, col_history = st.columns([1, 1])
-
-        with col_bid:
-            st.subheader("⚡ झटपट बोली लावा")
-            st.caption("रक्कम वाढवण्यासाठी खालील बटनावर टॅप करा:")
-            b_col1, b_col2, b_col3 = st.columns(3)
-
-            clicked_add = None
-            if b_col1.button(f"+ ₹50\n(₹{current_highest + 50})", use_container_width=True):
-                clicked_add = current_highest + 50
-            if b_col2.button(f"+ ₹100\n(₹{current
+                            st.session_state.
