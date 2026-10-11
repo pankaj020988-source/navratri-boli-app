@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
 
 # डेटाबेस जोडणी
 def get_db():
@@ -23,14 +24,8 @@ conn.close()
 
 st.set_page_config(page_title="देवीची पूजा व प्रार्थना बोली", layout="wide")
 
-# दर ३ सेकंदांनी बॅकग्राउंडमध्ये पेज आपोआप रिफ्रेश होण्यासाठी सुरक्षित टायमर
-st.html("""
-    <script>
-        setTimeout(function(){
-            window.parent.postMessage({type: 'streamlit:rerun'}, '*');
-        }, 3000);
-    </script>
-""")
+# दर ३ सेकंदांनी (३००० मिलीसेकंद) अचूक ऑटो-रिफ्रेश
+st_autorefresh(interval=3000, key="bidding_counter")
 
 ADMIN_PASSWORD = "admin123"
 
@@ -104,7 +99,7 @@ else:
     st.title("🚩 नवरात्र उत्सव - देवीची पूजा व प्रार्थना बोली")
 
     # सर्वोच्च रक्कम बॅनर
-    st.info(f"### 📢 सध्या चालू असलेली सर्वोच्च बोली: **₹{current_highest}**  *(🔴 Live)*")
+    st.info(f"### 📢 सध्या चालू असलेली सर्वोच्च बोली: **₹{current_highest}**  *(🔴 Live दर ३ सेकंदांनी ऑटो-रिफ्रेश)*")
 
     col_left, col_right = st.columns([1, 1])
 
@@ -113,7 +108,6 @@ else:
         n_in = st.text_input("भाविकाचे पूर्ण नाव:", key="p_name_val", placeholder="उदा. पंकज देसाई")
         m_in = st.text_input("१० अंकी मोबाईल क्रमांक:", key="p_mob_val", placeholder="उदा. 98xxxxxxxx")
 
-        # नाव व मोबाईल नंबर अदलाबदल झाल्यास ऑटो-डिटेक्ट
         s1 = n_in.strip()
         s2 = m_in.strip()
         if s1.isdigit() and not s2.isdigit():
@@ -197,8 +191,6 @@ else:
             if not df_my.empty:
                 st.dataframe(df_my, use_container_width=True, hide_index=True)
             else:
-                msg_empty = "या मोबाईल नंबरवरून अद्याप कोणतीही बोली आलेली नाही."
-                st.info(msg_empty)
+                st.info("या मोबाईल नंबरवरून अद्याप कोणतीही बोली आलेली नाही.")
         else:
-            msg_hint = "मोबाईल क्रमांक भरल्यानंतर तुमच्या बोली येथे दिसतील."
-            st.caption(msg_hint)
+            st.caption("मोबाईल क्रमांक भरल्यानंतर तुमच्या बोली येथे दिसतील.")
