@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import sqlite3
 from datetime import datetime
+import time
 
 # डेटाबेस जोडणी
 conn = sqlite3.connect("navratri_bids.db", check_same_thread=False)
@@ -30,25 +31,24 @@ st.set_page_config(page_title="देवीची पूजा व प्रा�
 
 ADMIN_PASSWORD = "admin123"
 
-# URL Query Params द्वारे युजर टिकवणे
+# URL वरून युजर ओळखणे (Query Params)
 query_params = st.query_params
 
 if "admin_logged_in" not in st.session_state:
     st.session_state.admin_logged_in = False
+
 if "current_user_mobile" not in st.session_state:
-    saved_mob = query_params.get("user", None)
-    if saved_mob:
-        cursor.execute("SELECT name, mobile FROM participants WHERE mobile = ?", (saved_mob,))
-        row = cursor.fetchone()
-        if row:
-            st.session_state.current_user_name = row[0]
-            st.session_state.current_user_mobile = row[1]
-        else:
-            st.session_state.current_user_mobile = None
-            st.session_state.current_user_name = None
-    else:
-        st.session_state.current_user_mobile = None
-        st.session_state.current_user_name = None
+    st.session_state.current_user_mobile = None
+    st.session_state.current_user_name = None
+
+# URL मध्ये नंबर असल्यास डेटाबेसमधून पडताळणी
+saved_mob = query_params.get("user", None)
+if saved_mob and not st.session_state.current_user_mobile:
+    cursor.execute("SELECT name, mobile FROM participants WHERE mobile = ?", (str(saved_mob).strip(),))
+    found = cursor.fetchone()
+    if found:
+        st.session_state.current_user_name = found[0]
+        st.session_state.current_user_mobile = found[1]
 
 # साइडबार
 st.sidebar.title("🔐 प्रणाली")
@@ -77,7 +77,107 @@ if selected_role == "Admin (प्रशासक)":
 
         st.title("🚩 Admin व्यवस्थापन कक्ष")
 
-        # Admin थेट Live View (दर ३ सेकंदांनी)
-        @st.fragment(run_every="3s")
-        def admin_live_view():
-            cursor.execute("SELECT bidder_name, mobile, amount FROM bids ORDER BY amount DESC LIMIT 1")
+        cursor.execute("SELECT bidder_name, mobile, amount FROM bids ORDER BY amount DESC LIMIT 1")
+        top_bid = cursor.fetchone()
+
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            st.subheader("🏆 सध्याचा विजेता")
+            if top_bid:
+                st.metric(label=f"विजेता: {top_bid[0]} ({top_bid[1]})", value=f"₹{top_bid[2]}")
+            else:
+                st.metric(label="अद्याप कोणतीही बोली नाही", value="₹0")
+
+        with col2:
+            st.subheader("👥 सर्व नोंदणीकृत सहभागी")
+            df_parts = pd.read_sql_query("SELECT id as क्र, name as नाव, mobile as मोबाईल FROM participants ORDER BY id DESC", conn)
+            st.dataframe(df_parts, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.subheader("📋 सर्व बोलींचा संपूर्ण इतिहास")
+        df_all = pd.read_sql_query("SELECT timestamp as वेळ, bidder_name as नाव, mobile as मोबाईल, amount as रक्कम FROM bids ORDER BY id DESC", conn)
+        if not df_all.empty:
+            st.dataframe(df_all, use_container_width=True, hide_index=True)
+            csv = df_all.to_csv(index=False).encode('utf-8')
+            st.download_button("Excel/CSV डाऊनलोड", data=csv, file_name="all_bids.csv", mime="text/csv")
+        else:
+            st.info("अद्याप कोणतीही बोली नाही.")
+
+# -------------------------------------------------------------
+# २. सहभागी (USER) पॅनल
+# -------------------------------------------------------------
+else:
+    st.title("🚩 नवरात्र उत्सव - देवीची पूजा व प्रार्थना बोली")
+
+    # चालू सर्वोच्च रक्कम मिळवणे
+    cursor.execute("SELECT MAX(amount) FROM bids")
+    max_res = cursor.fetchone()[0]
+    current_highest = max_res if max_res is not None else 0
+
+    col_title, col_btn = st.columns([4, 1])
+    with col_title:
+        st.info(f"### 📢 सध्या चालू असलेली सर्वोच्च बोली रक्कम: **₹{current_highest}**")
+    with col_btn:
+        st.write("")
+        if st.button("🔄 ताजी रक्कम तपासा", use_container_width=True):
+            st.rerun()
+
+    # जर युजर लॉगिन नसेल तर
+    if not st.session_state.current_user_mobile:
+        st.subheader("सहभागी होण्यासाठी माहिती भरा")
+        with st.form("auto_login_form"):
+            user_mob = st.text_input("१० अंकी मोबाईल क्रमांक:", max_chars=10, placeholder="उदा. 9876543210")
+            user_name_input = st.text_input("तुमचे पूर्ण नाव (पहिल्यांदाच येत असल्यास):", placeholder="उदा. राहुल शिंदे")
+            submit_login = st.form_submit_button("प्रवेश करा", type="primary")
+
+            if submit_login:
+                clean_mob = user_mob.strip()
+                clean_name = user_name_input.strip()
+
+                if len(clean_mob) < 10 or not clean_mob.isdigit():
+                    st.error("कृपया योग्य १० अंकी मोबाईल क्रमांक टाका.")
+                else:
+                    cursor.execute("SELECT name FROM participants WHERE mobile = ?", (clean_mob,))
+                    existing = cursor.fetchone()
+
+                    if existing:
+                        st.session_state.current_user_name = existing[0]
+                        st.session_state.current_user_mobile = clean_mob
+                        st.query_params["user"] = clean_mob
+                        st.rerun()
+                    else:
+                        if not clean_name:
+                            st.warning("पहिल्यांदा नोंदणी करताना नाव भरणे आवश्यक आहे.")
+                        else:
+                            cursor.execute("INSERT INTO participants (name, mobile) VALUES (?, ?)", (clean_name, clean_mob))
+                            conn.commit()
+                            st.session_state.current_user_name = clean_name
+                            st.session_state.current_user_mobile = clean_mob
+                            st.query_params["user"] = clean_mob
+                            st.rerun()
+    else:
+        # युजर लॉगिन असल्यास
+        u_name = st.session_state.current_user_name
+        u_mobile = st.session_state.current_user_mobile
+
+        top_col1, top_col2 = st.columns([3, 1])
+        with top_col1:
+            st.success(f"👤 स्वागत आहे: **{u_name}** ({u_mobile})")
+        with top_col2:
+            if st.button("बाहेर पडा (Logout)"):
+                st.session_state.current_user_mobile = None
+                st.session_state.current_user_name = None
+                st.query_params.clear()
+                st.rerun()
+
+        col_bid, col_history = st.columns([1, 1])
+
+        with col_bid:
+            st.subheader("⚡ झटपट बोली लावा")
+            st.caption("रक्कम वाढवण्यासाठी खालील बटनावर टॅप करा:")
+            b_col1, b_col2, b_col3 = st.columns(3)
+
+            clicked_add = None
+            if b_col1.button(f"+ ₹50\n(₹{current_highest + 50})", use_container_width=True):
+                clicked_add = current_highest + 50
+            if b_col2.button(f"+ ₹100\n(₹{current
